@@ -1,17 +1,234 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="es">
 
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <link rel="stylesheet" href="styles.css">
-  <title>Vanilla JavaScript App</title>
+  <title>Control de Gastos</title>
 </head>
 
 <body>
-  <main>
-    <h1>Vanilla JavaScript App</h1>
+  <header class="site-header">
+    <div class="container">
+      <h1>Control de Gastos</h1>
+      <p class="tagline">Registra, organiza y visualiza tus gastos rápidamente</p>
+    </div>
+  </header>
+
+  <main class="container">
+    <section class="card form-card">
+      <h2>Nuevo gasto</h2>
+      <form id="expense-form">
+        <div class="row">
+          <label for="desc">Descripción</label>
+          <input id="desc" name="desc" type="text" placeholder="Ej: Café, Gasolina" required>
+        </div>
+        <div class="row">
+          <label for="amount">Monto (€)</label>
+          <input id="amount" name="amount" type="number" step="0.01" min="0.01" placeholder="0.00" required>
+        </div>
+        <div class="row">
+          <label for="category">Categoría</label>
+          <select id="category" name="category">
+            <option value="Alimentos">Alimentos</option>
+            <option value="Transporte">Transporte</option>
+            <option value="Vivienda">Vivienda</option>
+            <option value="Ocio">Ocio</option>
+            <option value="Otros">Otros</option>
+          </select>
+        </div>
+        <div class="actions">
+          <button type="submit" class="btn primary">Añadir gasto</button>
+          <button type="button" id="clear-btn" class="btn">Borrar todo</button>
+        </div>
+      </form>
+    </section>
+
+    <section class="card list-card">
+      <h2>Lista de gastos</h2>
+      <div class="toolbar">
+        <div class="filters">
+          <label for="filter-cat">Filtrar:</label>
+          <select id="filter-cat">
+            <option value="all">Todos</option>
+            <option value="Alimentos">Alimentos</option>
+            <option value="Transporte">Transporte</option>
+            <option value="Vivienda">Vivienda</option>
+            <option value="Ocio">Ocio</option>
+            <option value="Otros">Otros</option>
+          </select>
+        </div>
+        <div class="tools">
+          <button id="export-csv" class="btn">Exportar CSV</button>
+          <label class="btn file-label">
+            Importar CSV
+            <input id="import-file" type="file" accept=".csv" hidden>
+          </label>
+        </div>
+      </div>
+      <ul id="expenses-list" class="expenses-list" aria-live="polite"></ul>
+      <div class="total">
+        <span>Total:</span>
+        <strong id="total-amount">€0.00</strong>
+      </div>
+    </section>
   </main>
+
+  <footer class="site-footer">
+    <div class="container">Hecho con ♥ — Interfaz simple para controlar gastos</div>
+  </footer>
+
+      <script>
+    (function(){
+      const form = document.getElementById('expense-form');
+      const listEl = document.getElementById('expenses-list');
+      const totalEl = document.getElementById('total-amount');
+      const clearBtn = document.getElementById('clear-btn');
+      const filterCat = document.getElementById('filter-cat');
+      const exportBtn = document.getElementById('export-csv');
+      const importFile = document.getElementById('import-file');
+
+      let expenses = JSON.parse(localStorage.getItem('expenses:v1') || '[]');
+      let currentFilter = 'all';
+
+      const icons = {
+        'Alimentos':'🍔',
+        'Transporte':'🚗',
+        'Vivienda':'🏠',
+        'Ocio':'🎮',
+        'Otros':'💡'
+      };
+
+      function formatMoney(n){
+        return '€' + Number(n).toFixed(2);
+      }
+
+      function getFiltered(){
+        if(currentFilter === 'all') return expenses;
+        return expenses.filter(e => e.category === currentFilter);
+      }
+
+      function render(){
+        listEl.innerHTML = '';
+        let total = 0;
+        const items = getFiltered();
+        items.forEach((e, idx) => {
+          total += Number(e.amount);
+          const li = document.createElement('li');
+          li.className = 'expense-item';
+          const icon = icons[e.category] || '•';
+          li.innerHTML = `<div class="left"><div class="desc">${icon} ${escapeHtml(e.desc)}</div><div class="meta">${escapeHtml(e.category)}</div></div><div class="right"><div class="amount">${formatMoney(e.amount)}</div><button class="remove" data-i="${idx}" aria-label="Eliminar gasto">×</button></div>`;
+          listEl.appendChild(li);
+        });
+        totalEl.textContent = formatMoney(total);
+        localStorage.setItem('expenses:v1', JSON.stringify(expenses));
+      }
+
+      function escapeHtml(s){
+        return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+      }
+
+      // Remove handler: when filtered, idx refers to filtered array, so map back to original
+      listEl.addEventListener('click', (ev) => {
+        const btn = ev.target.closest('button.remove');
+        if(!btn) return;
+        const i = Number(btn.dataset.i);
+        if(Number.isNaN(i)) return;
+        if(currentFilter === 'all'){
+          expenses.splice(i,1);
+        } else {
+          const filtered = getFiltered();
+          const item = filtered[i];
+          const originalIndex = expenses.findIndex(x => x.createdAt === item.createdAt && x.desc === item.desc && x.amount == item.amount);
+          if(originalIndex > -1) expenses.splice(originalIndex,1);
+        }
+        render();
+      });
+
+      form.addEventListener('submit', (ev) => {
+        ev.preventDefault();
+        const desc = form.desc.value.trim();
+        const amount = Number(form.amount.value);
+        const category = form.category.value;
+        if(!desc || !amount || amount <= 0) return;
+        expenses.unshift({desc, amount: amount.toFixed(2), category, createdAt: Date.now()});
+        form.reset();
+        form.desc.focus();
+        render();
+      });
+
+      clearBtn.addEventListener('click', () => {
+        if(!confirm('¿Borrar todos los gastos?')) return;
+        expenses = [];
+        render();
+      });
+
+      filterCat.addEventListener('change', (e) => {
+        currentFilter = e.target.value;
+        render();
+      });
+
+      // Export CSV
+      exportBtn.addEventListener('click', () => {
+        if(!expenses.length){ alert('No hay gastos para exportar'); return; }
+        const header = ['desc','amount','category','createdAt'];
+        const rows = expenses.map(r => header.map(k => '"'+String(r[k]).replace(/"/g,'""')+'"').join(','));
+        const csv = header.join(',') + '\n' + rows.join('\n');
+        const blob = new Blob([csv], {type: 'text/csv;charset=utf-8;'});
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url; a.download = 'gastos.csv'; document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
+      });
+
+      // Import CSV (simple parser)
+      importFile.addEventListener('change', (ev) => {
+        const f = ev.target.files && ev.target.files[0];
+        if(!f) return;
+        const reader = new FileReader();
+        reader.onload = function(e){
+          const text = e.target.result;
+          const lines = text.split(/\r?\n/).filter(Boolean);
+          if(!lines.length) return;
+          const header = lines.shift().split(',').map(h=>h.trim().replace(/^"|"$/g,''));
+          lines.forEach(line => {
+            const cols = parseCSVLine(line);
+            const obj = {};
+            header.forEach((h,i)=> obj[h] = cols[i] ? cols[i].replace(/^"|"$/g,'') : '');
+            // Basic validation
+            const desc = obj.desc || 'Importado';
+            const amount = Number(obj.amount) || 0;
+            const category = obj.category || 'Otros';
+            const createdAt = obj.createdAt ? Number(obj.createdAt) : Date.now();
+            if(amount>0) expenses.unshift({desc, amount: amount.toFixed(2), category, createdAt});
+          });
+          importFile.value = '';
+          render();
+        };
+        reader.readAsText(f, 'UTF-8');
+      });
+
+      function parseCSVLine(line){
+        const res = [];
+        let cur = '';
+        let inQuotes = false;
+        for(let i=0;i<line.length;i++){
+          const ch = line[i];
+          if(ch === '"'){
+            if(inQuotes && line[i+1] === '"'){ cur += '"'; i++; }
+            else inQuotes = !inQuotes;
+            continue;
+          }
+          if(ch === ',' && !inQuotes){ res.push(cur); cur=''; continue; }
+          cur += ch;
+        }
+        res.push(cur);
+        return res;
+      }
+
+      render();
+    })();
+  </script>
 </body>
 
 </html>
